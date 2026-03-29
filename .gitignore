@@ -38,3 +38,10 @@ next-env.d.ts
 # plan de trabajo local
 PHASES.md
 CONTEXT.md
+AUDIT.md
+.agents
+# playwright auth state
+e2e/.auth/
+# playwright reports
+playwright-report/
+test-results/

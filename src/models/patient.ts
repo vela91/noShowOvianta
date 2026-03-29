@@ -20,8 +20,16 @@ const PatientSchema = new Schema<IPatient>(
     conditionType: { type: String, enum: ["chronic", "acute"], required: true },
     specialty: { type: String, required: true },
 
-    preferredChannel: { type: [String], default: [] },
-    preferredContactTime: { type: [String], default: [] },
+    preferredChannel: {
+      type: [String],
+      enum: ["sms", "whatsapp", "call", "email"],
+      default: [],
+    },
+    preferredContactTime: {
+      type: [String],
+      enum: ["morning", "afternoon", "evening"],
+      default: [],
+    },
 
     consents: {
       automatedReminders: { type: Boolean, default: true },

@@ -16,6 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "NoShow Shield — Ovianta",
   description: "Módulo de predicción de no-shows para clínicas y hospitales",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({

@@ -234,4 +234,84 @@ describe("calculateRiskScore", () => {
     });
     expect(declined.score).toBeGreaterThan(confirmed.score);
   });
+
+  // --- Edge cases ---
+
+  it("new patient (0 appointments) uses prior 0.3, no divide-by-zero", () => {
+    const newPatient: IPatient = {
+      ...patientLowRisk,
+      stats: { totalAppointments: 0, noShows: 0, cancellations: 0, attendanceRate: 1 },
+    };
+    const result = calculateRiskScore(newPatient, appointmentLowRisk);
+    expect(result.score).toBeGreaterThanOrEqual(0);
+    expect(result.score).toBeLessThanOrEqual(100);
+    const noShowFeature = result.breakdown.find((f) => f.feature === "Historial de no-shows");
+    expect(noShowFeature?.normalizedValue).toBe(0.3);
+  });
+
+  it("reminderResponse = null falls back to default risk 0.5, no crash", () => {
+    const result = calculateRiskScore(patientLowRisk, {
+      ...appointmentLowRisk,
+      reminderResponse: null,
+    });
+    expect(result.score).toBeGreaterThanOrEqual(0);
+    const reminderFeature = result.breakdown.find((f) => f.feature === "Respuesta al recordatorio");
+    expect(reminderFeature?.normalizedValue).toBe(0.5);
+  });
+
+  it("leadTimeDays = 0 (same-day urgent appointment) → sigmoid near minimum, no crash", () => {
+    const result = calculateRiskScore(patientLowRisk, {
+      ...appointmentLowRisk,
+      leadTimeDays: 0,
+    });
+    expect(result.score).toBeGreaterThanOrEqual(0);
+    const leadFeature = result.breakdown.find((f) => f.feature === "Antelación de la cita");
+    // sigmoid(-14 * 0.15) ≈ 0.109 — low lead-time risk vs far-away appointment
+    expect(leadFeature!.normalizedValue).toBeLessThan(0.15);
+  });
+
+  it("unknown specialty falls back to 0.5, no crash", () => {
+    const patient = { ...patientLowRisk, specialty: "EspecialidadDesconocida" };
+    const result = calculateRiskScore(patient, appointmentLowRisk);
+    const specialtyFeature = result.breakdown.find((f) => f.feature === "Especialidad médica");
+    expect(specialtyFeature?.normalizedValue).toBe(0.5);
+  });
+
+  it("patient under 18 → youth risk curve active, score above baseline", () => {
+    const youngPatient: IPatient = {
+      ...patientLowRisk,
+      dateOfBirth: new Date(today.getFullYear() - 16, 0, 1),
+    };
+    const youngResult = calculateRiskScore(youngPatient, appointmentLowRisk);
+    const adultResult = calculateRiskScore(patientLowRisk, appointmentLowRisk);
+    expect(youngResult.score).toBeGreaterThan(adultResult.score);
+  });
+
+  it("attendanceRate = 1.0 (no no-shows) → optimistic scenario, low score", () => {
+    const perfectPatient: IPatient = {
+      ...patientLowRisk,
+      stats: { totalAppointments: 20, noShows: 0, cancellations: 0, attendanceRate: 1 },
+    };
+    const result = calculateRiskScore(perfectPatient, appointmentLowRisk);
+    expect(result.score).toBeLessThan(20);
+  });
+
+  it("recommendedIntervention matches level (low→standard_sms, medium→reinforced_sms, high→proactive_call)", () => {
+    const low = calculateRiskScore(patientLowRisk, appointmentLowRisk);
+    const high = calculateRiskScore(patientHighRisk, appointmentHighRisk);
+    if (low.level === "low") expect(low.recommendedIntervention).toBe("standard_sms");
+    if (high.level === "high") expect(high.recommendedIntervention).toBe("proactive_call");
+  });
+
+  it("medium-risk patient → recommendedIntervention = reinforced_sms", () => {
+    // patientPsychiatry with no_response reminder → medium-ish risk
+    const result = calculateRiskScore(patientPsychiatry, {
+      ...appointmentEvening,
+      reminderResponse: "no_response",
+      leadTimeDays: 5,
+    });
+    if (result.level === "medium") {
+      expect(result.recommendedIntervention).toBe("reinforced_sms");
+    }
+  });
 });

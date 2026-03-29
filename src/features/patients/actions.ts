@@ -5,10 +5,12 @@ import dbConnect from "@/lib/db";
 import Patient from "@/models/patient";
 import { serialize } from "@/lib/utils";
 import type { IPatient } from "@/lib/types";
+import { requireAuth } from "@/lib/auth";
 
 const UpdatePatientSchema = z.object({
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
+  dateOfBirth: z.coerce.date().optional(),
   phone: z.string().min(1).optional(),
   email: z.string().email().optional(),
   address: z.string().min(1).optional(),
@@ -38,6 +40,7 @@ export async function updatePatient(
   id: string,
   data: UpdatePatientInput
 ): Promise<UpdatePatientResult> {
+  await requireAuth();
   const parsed = UpdatePatientSchema.safeParse(data);
   if (!parsed.success) {
     return { success: false, error: parsed.error.message };
@@ -54,8 +57,8 @@ export async function updatePatient(
     return { success: false, error: "Paciente no encontrado" };
   }
 
-  revalidatePath("/patients");
-  revalidatePath(`/patients/${id}`);
+  revalidatePath("/dashboard/pacientes");
+  revalidatePath(`/dashboard/pacientes/${id}`);
 
   return { success: true, patient: serialize<IPatient>(updated) };
 }

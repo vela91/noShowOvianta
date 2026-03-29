@@ -1,5 +1,4 @@
 import { cache } from "react";
-import { connection } from "next/server";
 import dbConnect from "@/lib/db";
 import Patient from "@/models/patient";
 import Appointment from "@/models/appointment";
@@ -22,10 +21,79 @@ export interface AnalyticsStats {
     count: number;
     avgNoShowRate: number;
   }[];
+  monthlyStats: { month: string; noShowRate: number }[];
+}
+
+type HistoricAppointment = { status: string; date: Date };
+type RawPatient = { specialty: string; stats: { noShows: number; totalAppointments: number } } & Record<string, unknown>;
+
+function computeNoShowRate(historicAppointments: HistoricAppointment[]): number {
+  const noShows = historicAppointments.filter((a) => a.status === "no_show").length;
+  return historicAppointments.length > 0 ? noShows / historicAppointments.length : 0;
+}
+
+function computeRiskDistribution(
+  allPatients: RawPatient[],
+  nextApptMap: Map<string, IAppointment>
+): AnalyticsStats["riskDistribution"] {
+  const dist = { low: 0, medium: 0, high: 0, noAppointment: 0 };
+  for (const patient of allPatients) {
+    const p = serialize<IPatient>(patient);
+    const nextAppt = nextApptMap.get(p._id);
+    if (!nextAppt) { dist.noAppointment++; continue; }
+    dist[calculateRiskScore(p, nextAppt).level]++;
+  }
+  return dist;
+}
+
+function computeBySpecialty(allPatients: RawPatient[]): AnalyticsStats["bySpecialty"] {
+  const specialtyMap = new Map<string, { count: number; totalNoShows: number; totalAppts: number }>();
+  for (const patient of allPatients) {
+    if (!specialtyMap.has(patient.specialty)) {
+      specialtyMap.set(patient.specialty, { count: 0, totalNoShows: 0, totalAppts: 0 });
+    }
+    const entry = specialtyMap.get(patient.specialty)!;
+    entry.count++;
+    entry.totalNoShows += patient.stats.noShows;
+    entry.totalAppts += patient.stats.totalAppointments;
+  }
+  return [...specialtyMap.entries()]
+    .map(([specialty, data]) => ({
+      specialty,
+      count: data.count,
+      avgNoShowRate: data.totalAppts > 0
+        ? Math.round((data.totalNoShows / data.totalAppts) * 1000) / 1000
+        : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function computeMonthlyStats(
+  historicAppointments: HistoricAppointment[],
+  today: Date
+): AnalyticsStats["monthlyStats"] {
+  const monthlyMap = new Map<string, { noShows: number; total: number; label: string }>();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    monthlyMap.set(key, { noShows: 0, total: 0, label: d.toLocaleDateString("es-ES", { month: "short" }) });
+  }
+  for (const appt of historicAppointments) {
+    const d = new Date(appt.date);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    if (monthlyMap.has(key)) {
+      const entry = monthlyMap.get(key)!;
+      entry.total++;
+      if (appt.status === "no_show") entry.noShows++;
+    }
+  }
+  return [...monthlyMap.values()].map(({ noShows, total, label }) => ({
+    month: label,
+    noShowRate: total > 0 ? Math.round((noShows / total) * 100) : 0,
+  }));
 }
 
 export const getAnalyticsStats = cache(async (): Promise<AnalyticsStats> => {
-  await connection();
   await dbConnect();
 
   const today = new Date();
@@ -46,15 +114,6 @@ export const getAnalyticsStats = cache(async (): Promise<AnalyticsStats> => {
       }).lean(),
     ]);
 
-  // Overall no-show rate from historical data
-  const noShows = historicAppointments.filter(
-    (a) => a.status === "no_show"
-  ).length;
-  const noShowRate =
-    historicAppointments.length > 0
-      ? noShows / historicAppointments.length
-      : 0;
-
   // Next appointment per patient (earliest upcoming)
   const nextApptMap = new Map<string, IAppointment>();
   for (const appt of upcomingAppointments) {
@@ -64,51 +123,12 @@ export const getAnalyticsStats = cache(async (): Promise<AnalyticsStats> => {
     }
   }
 
-  // Risk distribution across all patients
-  const riskDistribution = { low: 0, medium: 0, high: 0, noAppointment: 0 };
-  for (const patient of allPatients) {
-    const p = serialize<IPatient>(patient);
-    const nextAppt = nextApptMap.get(p._id);
-    if (!nextAppt) {
-      riskDistribution.noAppointment++;
-      continue;
-    }
-    const { level } = calculateRiskScore(p, nextAppt);
-    riskDistribution[level]++;
-  }
-
-  // Aggregate stats per specialty (from pre-computed patient.stats)
-  const specialtyMap = new Map<
-    string,
-    { count: number; totalNoShows: number; totalAppts: number }
-  >();
-  for (const patient of allPatients) {
-    const sp = patient.specialty;
-    if (!specialtyMap.has(sp)) {
-      specialtyMap.set(sp, { count: 0, totalNoShows: 0, totalAppts: 0 });
-    }
-    const entry = specialtyMap.get(sp)!;
-    entry.count++;
-    entry.totalNoShows += patient.stats.noShows;
-    entry.totalAppts += patient.stats.totalAppointments;
-  }
-
-  const bySpecialty = [...specialtyMap.entries()]
-    .map(([specialty, data]) => ({
-      specialty,
-      count: data.count,
-      avgNoShowRate:
-        data.totalAppts > 0
-          ? Math.round((data.totalNoShows / data.totalAppts) * 1000) / 1000
-          : 0,
-    }))
-    .sort((a, b) => b.count - a.count);
-
   return {
     totalPatients,
     upcomingAppointments: upcomingAppointments.length,
-    noShowRate: Math.round(noShowRate * 1000) / 1000,
-    riskDistribution,
-    bySpecialty,
+    noShowRate: Math.round(computeNoShowRate(historicAppointments) * 1000) / 1000,
+    riskDistribution: computeRiskDistribution(allPatients as RawPatient[], nextApptMap),
+    bySpecialty: computeBySpecialty(allPatients as RawPatient[]),
+    monthlyStats: computeMonthlyStats(historicAppointments as HistoricAppointment[], today),
   };
 });

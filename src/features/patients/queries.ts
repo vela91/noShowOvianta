@@ -45,7 +45,9 @@ export const getPatients = cache(
       query.specialty = filters.specialty;
     }
     if (filters?.search) {
-      const regex = new RegExp(filters.search, "i");
+      // Escape special regex chars to prevent ReDoS with user-controlled input
+      const escaped = filters.search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(escaped, "i");
       query.$or = [{ firstName: regex }, { lastName: regex }, { email: regex }];
     }
 
@@ -103,5 +105,16 @@ export const getPatientById = cache(
       : undefined;
 
     return { ...p, nextAppointment, riskScore };
+  }
+);
+
+export const getPatientAppointments = cache(
+  async (patientId: string): Promise<IAppointment[]> => {
+    await connection();
+    await dbConnect();
+    const appointments = await Appointment.find({ patientId })
+      .sort({ date: -1 })
+      .lean();
+    return appointments.map((a) => serialize<IAppointment>(a));
   }
 );

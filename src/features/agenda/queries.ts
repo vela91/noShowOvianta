@@ -41,16 +41,13 @@ export const getAppointmentsForDay = cache(
       patients.map((p) => [p._id.toString(), serialize<IPatient>(p)])
     );
 
-    return appointments.map((appt) => {
+    return appointments.flatMap((appt) => {
       const a = serialize<IAppointment>(appt);
-      const patient = patientMap.get(a.patientId)!;
+      const patient = patientMap.get(a.patientId);
+      // Skip orphaned appointments (patient deleted without cascading)
+      if (!patient) return [];
       const { score, level } = calculateRiskScore(patient, a);
-      return {
-        ...a,
-        patient,
-        riskScoreComputed: score,
-        riskLevelComputed: level,
-      };
+      return [{ ...a, patient, riskScoreComputed: score, riskLevelComputed: level }];
     });
   }
 );

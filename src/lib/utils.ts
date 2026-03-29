@@ -43,6 +43,6 @@ export function formatDateTime(date: Date | string): string {
 // serialize<T> — strips Mongoose-specific fields so plain objects can cross
 // the Server → Client boundary in Next.js without serialization errors.
 // Use this on any .lean() result before passing it to a Client Component.
-export function serialize<T>(doc: T): T {
-  return JSON.parse(JSON.stringify(doc));
+export function serialize<T>(doc: unknown): T {
+  return JSON.parse(JSON.stringify(doc)) as T;
 }
