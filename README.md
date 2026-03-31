@@ -12,7 +12,7 @@ La solución habitual es enviar el mismo recordatorio genérico a todos los paci
 
 ---
 
-## Qué es esto
+## La Solución
 
 Una aplicación Next.js que demuestra cómo un sistema de prevención de no-shows puede ser **preciso, explicable y adaptable** desde el primer día:
 
