@@ -5,6 +5,18 @@ import Appointment from "@/models/appointment";
 import { calculateRiskScore } from "@/lib/scoring";
 import { serialize } from "@/lib/utils";
 import type { IAppointment, IPatient } from "@/lib/types";
+import {
+  PRICE_PER_APPOINTMENT,
+  SMS_STANDARD_SUCCESS_RATE,
+  SMS_REINFORCED_SUCCESS_RATE,
+  AI_CALL_SUCCESS_RATE,
+} from "@/lib/business-constants";
+
+interface InterventionStat {
+  targetPatients: number;
+  estimatedRecovered: number;
+  estimatedSavings: number;
+}
 
 export interface AnalyticsStats {
   totalPatients: number;
@@ -22,6 +34,12 @@ export interface AnalyticsStats {
     avgNoShowRate: number;
   }[];
   monthlyStats: { month: string; noShowRate: number }[];
+  interventionImpact: {
+    smsStandard: InterventionStat;
+    smsReinforced: InterventionStat;
+    aiCall: InterventionStat;
+    total: { estimatedRecovered: number; estimatedSavings: number };
+  };
 }
 
 type HistoricAppointment = { status: string; date: Date };
@@ -93,6 +111,21 @@ function computeMonthlyStats(
   }));
 }
 
+function computeInterventionImpact(
+  riskDistribution: AnalyticsStats["riskDistribution"]
+): AnalyticsStats["interventionImpact"] {
+  const recoveredStandard   = Math.round(riskDistribution.low    * SMS_STANDARD_SUCCESS_RATE);
+  const recoveredReinforced = Math.round(riskDistribution.medium * SMS_REINFORCED_SUCCESS_RATE);
+  const recoveredAiCall     = Math.round(riskDistribution.high   * AI_CALL_SUCCESS_RATE);
+  const totalRecovered      = recoveredStandard + recoveredReinforced + recoveredAiCall;
+  return {
+    smsStandard:   { targetPatients: riskDistribution.low,    estimatedRecovered: recoveredStandard,   estimatedSavings: recoveredStandard   * PRICE_PER_APPOINTMENT },
+    smsReinforced: { targetPatients: riskDistribution.medium, estimatedRecovered: recoveredReinforced, estimatedSavings: recoveredReinforced * PRICE_PER_APPOINTMENT },
+    aiCall:        { targetPatients: riskDistribution.high,   estimatedRecovered: recoveredAiCall,     estimatedSavings: recoveredAiCall     * PRICE_PER_APPOINTMENT },
+    total:         { estimatedRecovered: totalRecovered,      estimatedSavings: totalRecovered         * PRICE_PER_APPOINTMENT },
+  };
+}
+
 export const getAnalyticsStats = cache(async (): Promise<AnalyticsStats> => {
   await dbConnect();
 
@@ -123,12 +156,15 @@ export const getAnalyticsStats = cache(async (): Promise<AnalyticsStats> => {
     }
   }
 
+  const riskDistribution = computeRiskDistribution(allPatients as RawPatient[], nextApptMap);
+
   return {
     totalPatients,
     upcomingAppointments: upcomingAppointments.length,
     noShowRate: Math.round(computeNoShowRate(historicAppointments) * 1000) / 1000,
-    riskDistribution: computeRiskDistribution(allPatients as RawPatient[], nextApptMap),
+    riskDistribution,
     bySpecialty: computeBySpecialty(allPatients as RawPatient[]),
     monthlyStats: computeMonthlyStats(historicAppointments as HistoricAppointment[], today),
+    interventionImpact: computeInterventionImpact(riskDistribution),
   };
 });

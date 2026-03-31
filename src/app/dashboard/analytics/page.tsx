@@ -9,10 +9,8 @@ const RiskDonutChart = dynamic(
   () => import("@/features/analytics/components/charts").then((m) => m.RiskDonutChart),
   { loading: () => <div className="h-40 w-full animate-pulse rounded-lg bg-muted" /> }
 );
-import {
-  PRICE_PER_APPOINTMENT,
-  INTERVENTION_SUCCESS_RATE,
-} from "@/lib/business-constants";
+import { StrategyImpactCards } from "@/features/analytics/components/strategy-impact-cards";
+import { TooltipInfo } from "@/features/analytics/components/tooltip-info";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -51,6 +49,12 @@ async function AnalyticsContent() {
     riskDistribution: { low: 0, medium: 0, high: 0, noAppointment: 0 },
     bySpecialty: [] as { specialty: string; count: number; avgNoShowRate: number }[],
     monthlyStats: [] as { month: string; noShowRate: number }[],
+    interventionImpact: {
+      smsStandard:   { targetPatients: 0, estimatedRecovered: 0, estimatedSavings: 0 },
+      smsReinforced: { targetPatients: 0, estimatedRecovered: 0, estimatedSavings: 0 },
+      aiCall:        { targetPatients: 0, estimatedRecovered: 0, estimatedSavings: 0 },
+      total:         { estimatedRecovered: 0, estimatedSavings: 0 },
+    },
   };
 
   if (process.env.MONGODB_URI) {
@@ -58,8 +62,8 @@ async function AnalyticsContent() {
   }
 
   const highRiskCount = stats.riskDistribution.high;
-  const estimatedRecovered = Math.round(highRiskCount * INTERVENTION_SUCCESS_RATE);
-  const economicImpact = estimatedRecovered * PRICE_PER_APPOINTMENT;
+  const estimatedRecovered = stats.interventionImpact.total.estimatedRecovered;
+  const economicImpact = stats.interventionImpact.total.estimatedSavings;
   const noShowRatePct = Math.round(stats.noShowRate * 100);
   const monthlyStats = stats.monthlyStats;
 
@@ -79,6 +83,7 @@ async function AnalyticsContent() {
       title: "Tasa de no-show",
       value: `${noShowRatePct}%`,
       description: "Global histórico",
+      tooltip: "Citas con estado no-show ÷ total de citas históricas registradas en el sistema.",
       icon: TrendingDown,
       color: "text-amber-600",
       bg: "bg-amber-50",
@@ -87,6 +92,7 @@ async function AnalyticsContent() {
       title: "Citas recuperadas",
       value: estimatedRecovered,
       description: "Estimado este mes",
+      tooltip: "Estimación: pacientes por nivel de riesgo × tasa de éxito de cada estrategia (9% · 25% · 35%).",
       icon: Activity,
       color: "text-green-600",
       bg: "bg-green-50",
@@ -94,7 +100,8 @@ async function AnalyticsContent() {
     {
       title: "Impacto económico",
       value: `€${economicImpact.toLocaleString("es-ES")}`,
-      description: "Valor recuperado (€65/cita)",
+      description: "Estimado con tasas por estrategia",
+      tooltip: "Citas recuperadas estimadas × €65 por cita (coste medio documentado, Hospital Costa del Sol, 2015).",
       icon: Euro,
       color: "text-primary",
       bg: "bg-primary/10",
@@ -103,6 +110,7 @@ async function AnalyticsContent() {
       title: "Pacientes alto riesgo",
       value: highRiskCount,
       description: "Con próxima cita",
+      tooltip: "Pacientes con score > 40 en el motor de riesgo que tienen una próxima cita programada.",
       icon: Users,
       color: "text-red-600",
       bg: "bg-red-50",
@@ -122,9 +130,12 @@ async function AnalyticsContent() {
         {kpis.map((kpi) => (
           <Card key={kpi.title}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {kpi.title}
-              </CardTitle>
+              <div className="flex items-center gap-1.5">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  {kpi.title}
+                </CardTitle>
+                <TooltipInfo text={kpi.tooltip} />
+              </div>
               <div className={`rounded-lg p-1.5 ${kpi.bg}`}>
                 <kpi.icon className={`h-4 w-4 ${kpi.color}`} />
               </div>
@@ -149,6 +160,7 @@ async function AnalyticsContent() {
             <CardTitle className="text-base">
               Tasa de no-show — últimos 6 meses
             </CardTitle>
+            <TooltipInfo text="Tasa mensual de no-show calculada sobre citas completadas (asistidas + no-show) en los últimos 6 meses." />
           </CardHeader>
           <CardContent>
             <NoShowAreaChart data={monthlyStats} />
@@ -159,6 +171,7 @@ async function AnalyticsContent() {
           <CardHeader className="flex flex-row items-center gap-2 pb-3">
             <Activity className="h-4 w-4 text-primary" />
             <CardTitle className="text-base">Distribución de riesgo</CardTitle>
+            <TooltipInfo text="Clasificación de pacientes con próxima cita según el motor de scoring de 9 factores ponderados." />
           </CardHeader>
           {/* Risk distribution uses real upcoming-appointment data */}
           <CardContent>
@@ -169,6 +182,9 @@ async function AnalyticsContent() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Strategy Impact Section */}
+      <StrategyImpactCards impact={stats.interventionImpact} />
     </div>
   );
 }
@@ -182,6 +198,10 @@ function AnalyticsSkeleton() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Skeleton className="lg:col-span-2 h-72 rounded-xl" />
         <Skeleton className="h-72 rounded-xl" />
+      </div>
+      <Skeleton className="h-5 w-56 rounded" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+        {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-36 rounded-xl" />)}
       </div>
     </div>
   );
