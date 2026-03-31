@@ -195,8 +195,10 @@ async function seed() {
     for (let j = 0; j < numHistorical; j++) {
       // Past dates: between 2 years ago and yesterday
       const daysAgo = randomInt(1, 730);
-      const appointmentDate = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
-      appointmentDate.setHours(randomInt(8, 18), 0, 0, 0);
+      const appointmentDate = new Date(Date.UTC(
+        now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysAgo
+      ));
+      appointmentDate.setUTCHours(randomInt(8, 18), 0, 0, 0);
 
       const appointmentType = randomFrom(APPOINTMENT_TYPES);
       let status: string;
@@ -254,8 +256,10 @@ async function seed() {
       // Varied lead times: 0 days (today) to 30 days
       // 0 included so the agenda for today has appointments
       const leadDays = randomFrom([0, 0, 1, 2, 3, 4, 5, 7, 10, 14, 21, 28, 30]);
-      const futureDate = new Date(now.getTime() + leadDays * 24 * 60 * 60 * 1000);
-      futureDate.setHours(randomInt(8, 18), 0, 0, 0);
+      const futureDate = new Date(Date.UTC(
+        now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + leadDays
+      ));
+      futureDate.setUTCHours(randomInt(8, 18), 0, 0, 0);
 
       // Reminder response weighted by patient risk profile
       const patientRiskProfile = noShows / totalAppts;
@@ -350,7 +354,9 @@ async function seed() {
   ];
 
   for (const daysFromNow of [3, 4]) {
-    const evalDate = new Date(seedNow.getTime() + daysFromNow * 24 * 60 * 60 * 1000);
+    const evalDate = new Date(Date.UTC(
+      seedNow.getUTCFullYear(), seedNow.getUTCMonth(), seedNow.getUTCDate() + daysFromNow
+    ));
     const evalAppointments = [];
 
     for (let s = 0; s < Math.min(evalSlots.length, slotPatients.length); s++) {
@@ -359,7 +365,7 @@ async function seed() {
       if (!pat) continue;
 
       const apptDate = new Date(evalDate);
-      apptDate.setHours(slot.hour, 0, 0, 0);
+      apptDate.setUTCHours(slot.hour, 0, 0, 0);
 
       const sp = SPECIALTIES.find((x) => x.specialty === pat.specialty) ?? SPECIALTIES[0];
 
@@ -425,8 +431,10 @@ async function seed() {
     const historyAppts = [];
     for (let j = 0; j < numHistory; j++) {
       const daysAgo = randomInt(14, 730);
-      const apptDate = new Date(seedNow.getTime() - daysAgo * 24 * 60 * 60 * 1000);
-      apptDate.setHours(randomInt(10, 13), 0, 0, 0);
+      const apptDate = new Date(Date.UTC(
+        seedNow.getUTCFullYear(), seedNow.getUTCMonth(), seedNow.getUTCDate() - daysAgo
+      ));
+      apptDate.setUTCHours(randomInt(10, 13), 0, 0, 0);
       historyAppts.push({
         patientId: lowRiskPatient._id,
         doctorName: p.doctor,
@@ -455,8 +463,10 @@ async function seed() {
 
     // Future appointment: idx=0 → +3d, idx=1 → +4d, rest → +2d
     const leadDays = idx === 0 ? 3 : idx === 1 ? 4 : 2;
-    const futureDate = new Date(seedNow.getTime() + leadDays * 24 * 60 * 60 * 1000);
-    futureDate.setHours(11, 0, 0, 0);
+    const futureDate = new Date(Date.UTC(
+      seedNow.getUTCFullYear(), seedNow.getUTCMonth(), seedNow.getUTCDate() + leadDays
+    ));
+    futureDate.setUTCHours(11, 0, 0, 0);
     await Appointment.create({
       patientId: lowRiskPatient._id,
       doctorName: p.doctor,

@@ -62,7 +62,7 @@ async function AgendaContent({
   const slotMap = new Map<number, typeof appointments>();
   getHourSlots().forEach((h) => slotMap.set(h, []));
   appointments.forEach((appt) => {
-    const h = new Date(appt.date).getHours();
+    const h = new Date(appt.date).getUTCHours();
     if (slotMap.has(h)) slotMap.get(h)!.push(appt);
   });
 
